@@ -53,10 +53,17 @@ class ExceptionCaptureHandler(logging.Handler):
                 exc_type=getattr(exc_type, "__name__", str(exc_type)),
                 exc_value_repr=safe_repr(exc_value, self._store.max_repr),
                 tb=tb,
-                formatted="".join(traceback.format_exception(exc_type, exc_value, tb)),
+                # lookup_lines=False keeps this a pure in-memory walk of the
+                # traceback. Formatting it reads source files off disk via
+                # linecache, and emit() runs synchronously in whatever thread
+                # logged — frequently the event loop — so that is deferred to
+                # first read. See CapturedException.formatted.
+                te=traceback.TracebackException(
+                    exc_type, exc_value, tb, lookup_lines=False
+                ),
                 root_cause=self._root_cause(tb),
             )
-        except Exception:
+        except Exception:  # noqa: BLE001 - a handler must never raise
             # Last resort: hand off to logging's own error machinery.
             self.handleError(record)
 
@@ -64,7 +71,7 @@ class ExceptionCaptureHandler(logging.Handler):
     def _safe_message(record: logging.LogRecord) -> str:
         try:
             return record.getMessage()
-        except Exception as err:
+        except Exception as err:  # noqa: BLE001 - getMessage() runs user %-formatting
             return f"<unformattable log message: {err!r}>"
 
     @staticmethod

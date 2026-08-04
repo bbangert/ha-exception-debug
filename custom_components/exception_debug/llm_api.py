@@ -12,7 +12,7 @@ from typing import Any
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import llm
-from homeassistant.util.json import JsonObjectType
+from homeassistant.util.json import JsonObjectType, JsonValueType
 import voluptuous as vol
 
 from .const import LLM_API_ID, LLM_API_NAME
@@ -132,7 +132,10 @@ class GetFramesTool(_StoreTool):
         entry = self._store.get(tool_input.tool_args["id"])
         if entry is None:
             return _not_found(tool_input.tool_args["id"])
-        return {"id": entry.id, "live": entry.is_live, "frames": entry.frames()}
+        # list is invariant, so the precise list[dict[str, JsonValueType]]
+        # from frames() has to be widened explicitly for JsonObjectType.
+        frames: list[JsonValueType] = list(entry.frames())
+        return {"id": entry.id, "live": entry.is_live, "frames": frames}
 
 
 class GetFrameLocalsTool(_StoreTool):

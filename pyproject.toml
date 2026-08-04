@@ -12,12 +12,18 @@ select = [
   "B",    # flake8-bugbear
   "SIM",  # flake8-simplify
   "D",    # pydocstyle
+  "ANN",  # flake8-annotations - catches untyped defs without needing mypy
+  "BLE",  # flake8-blind-except - keeps the deliberate broad excepts documented
+  "S",    # flake8-bandit - this integration executes arbitrary code by design
+  "T20",  # flake8-print - no stray print()
+  "TID",  # flake8-tidy-imports
   "ASYNC",
   "RUF",
 ]
 ignore = [
   "D203",  # incompatible with D211
   "D213",  # incompatible with D212
+  "ANN401",  # Any is correct for values we only ever repr()
 ]
 
 [tool.ruff.lint.pydocstyle]
@@ -29,7 +35,12 @@ known-first-party = ["custom_components"]
 combine-as-imports = true
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["D100", "D103"]
+"tests/*" = [
+  "D100",
+  "D103",
+  "S101",    # assert is how pytest works
+  "SLF001",  # tests legitimately assert on private state
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

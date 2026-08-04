@@ -102,7 +102,11 @@ Tools exposed to the agent:
 
 ## REST API
 
-All endpoints require authentication (`Authorization: Bearer <long-lived token>`):
+All endpoints require an **admin** user's token
+(`Authorization: Bearer <long-lived token>`). Frame locals routinely contain
+credentials that were in scope when the error happened, so authentication alone
+is not a sufficient boundary — this matches the admin gate on the WebSocket
+commands.
 
 ```
 GET /api/exception_debug/exceptions?limit=20
@@ -125,6 +129,8 @@ exception_debug/frame_locals   {exc_id, frame}
 ## Notes & limitations
 
 - Root-logger handlers do not see loggers with `propagate = False` (rare in HA).
+- Captured exceptions are held per config entry, so changing an option (which
+  reloads the integration) starts a fresh buffer and discards what was captured.
 - `eval_in_frame` runs on the event loop; a blocking snippet will block Home
   Assistant. Use it deliberately.
 - The icon ships in-repo under `custom_components/exception_debug/brand/`, which
@@ -136,13 +142,17 @@ exception_debug/frame_locals   {exc_id, frame}
 
 ```bash
 python -m venv .venv && .venv/bin/pip install -r requirements_test.txt
-.venv/bin/pytest --cov=custom_components.exception_debug --cov-report=term-missing
+.venv/bin/pytest --cov=custom_components.exception_debug --cov-branch --cov-report=term-missing
 .venv/bin/ruff format --check custom_components tests
 .venv/bin/ruff check custom_components tests
+.venv/bin/mypy custom_components/exception_debug --ignore-missing-imports
 ```
 
-CI runs hassfest, HACS validation, ruff and the test suite (which is gated at
-100% coverage) on every push and pull request.
+CI runs hassfest, HACS validation, ruff, mypy, and the test suite on every push
+and pull request. Tests are gated at 100% **branch** coverage and run against
+both the minimum supported Home Assistant (2025.8.1) and a current release, so
+the version floor advertised in `hacs.json` is actually exercised rather than
+assumed.
 
 ## License
 

@@ -5,10 +5,11 @@ from __future__ import annotations
 from datetime import timedelta
 import logging
 
+from freezegun.api import FrozenDateTimeFactory
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import issue_registry as ir, llm
 from homeassistant.setup import async_setup_component
 import pytest
@@ -16,6 +17,7 @@ from pytest_homeassistant_custom_component.common import (
     MockConfigEntry,
     async_fire_time_changed,
 )
+import voluptuous as vol
 
 from custom_components.exception_debug.const import (
     CONF_LEVEL,
@@ -25,6 +27,7 @@ from custom_components.exception_debug.const import (
     DOMAIN,
     LLM_API_ID,
 )
+from custom_components.exception_debug.data import async_get_store
 from custom_components.exception_debug.handler import ExceptionCaptureHandler
 
 from .helpers import LOGGER_NAME, log_exception
@@ -94,7 +97,9 @@ async def test_llm_api_is_registered(
 
 @pytest.mark.parametrize("options", [{**DEFAULT_OPTIONS, CONF_TTL: 60}])
 async def test_expiry_timer_releases_frames(
-    hass: HomeAssistant, freezer, setup_integration: MockConfigEntry
+    hass: HomeAssistant,
+    freezer: FrozenDateTimeFactory,
+    setup_integration: MockConfigEntry,
 ) -> None:
     """The periodic timer applies the TTL even with no new exceptions."""
     log_exception(LOGGER_NAME)
@@ -159,5 +164,25 @@ async def test_clear_service_without_a_loaded_entry(hass: HomeAssistant) -> None
     assert await async_setup_component(hass, DOMAIN, {})
     await hass.async_block_till_done()
 
-    with pytest.raises(HomeAssistantError, match="not set up"):
+    with pytest.raises(ServiceValidationError, match="not set up"):
         await hass.services.async_call(DOMAIN, "clear", blocking=True)
+
+
+async def test_clear_service_rejects_unknown_keys(
+    hass: HomeAssistant, setup_integration: MockConfigEntry
+) -> None:
+    """The service schema is strict — stray keys are refused, not ignored."""
+    with pytest.raises(vol.Invalid):
+        await hass.services.async_call(
+            DOMAIN, "clear", {"bogus": "value"}, blocking=True
+        )
+
+
+async def test_get_store_ignores_an_unloaded_entry(
+    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+) -> None:
+    """An entry that exists but was never set up must not be treated as live."""
+    mock_config_entry.add_to_hass(hass)
+
+    assert mock_config_entry.state is not ConfigEntryState.LOADED
+    assert async_get_store(hass) is None

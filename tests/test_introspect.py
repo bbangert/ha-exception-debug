@@ -70,7 +70,7 @@ def test_iter_frames_of_none() -> None:
 
 def test_describe_frame_fields(raising_frame: FrameType) -> None:
     """A frame summary carries location and local names, not values."""
-    described = describe_frame(raising_frame, 42, RAISING_FRAME, MAX_REPR)
+    described = describe_frame(raising_frame, 42, RAISING_FRAME)
 
     assert described["index"] == RAISING_FRAME
     assert described["function"] == "_inner"

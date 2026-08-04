@@ -1,3 +1,10 @@
+# The test harness pins an exact Home Assistant version. CI additionally runs
+# the suite against 0.13.270 (Home Assistant 2025.8.1) to exercise the minimum
+# declared in hacs.json — see .github/workflows/validate.yaml.
+#
+# Note when bumping: releases from 0.13.317 onward require Python >= 3.14, so
+# the CI python-version must move in the same change.
 pytest-homeassistant-custom-component==0.13.316
 pytest-cov==7.0.0
+mypy==2.3.0
 ruff==0.16.1

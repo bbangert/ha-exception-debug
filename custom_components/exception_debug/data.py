@@ -10,10 +10,9 @@ from dataclasses import dataclass
 
 from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import ServiceValidationError
 
 from .const import DOMAIN
-from .handler import ExceptionCaptureHandler
 from .store import ExceptionStore
 
 
@@ -22,14 +21,18 @@ class ExceptionDebugData:
     """Objects owned by a loaded config entry."""
 
     store: ExceptionStore
-    handler: ExceptionCaptureHandler
 
 
 type ExceptionDebugConfigEntry = ConfigEntry[ExceptionDebugData]
 
 
-class NotConfiguredError(HomeAssistantError):
-    """Raised when no Exception Debug config entry is loaded."""
+class NotConfiguredError(ServiceValidationError):
+    """Raised when no Exception Debug config entry is loaded.
+
+    A ``ServiceValidationError`` rather than a plain ``HomeAssistantError``:
+    calling the service with nothing set up is a user-actionable mistake, not
+    an internal or device failure.
+    """
 
     def __init__(self) -> None:
         """Initialise with the translated message."""
@@ -39,7 +42,8 @@ class NotConfiguredError(HomeAssistantError):
 @callback
 def async_get_store(hass: HomeAssistant) -> ExceptionStore | None:
     """Return the store of the loaded config entry, or None if not set up."""
-    for entry in hass.config_entries.async_entries(DOMAIN):
+    entries: list[ExceptionDebugConfigEntry] = hass.config_entries.async_entries(DOMAIN)
+    for entry in entries:
         if entry.state is ConfigEntryState.LOADED:
             return entry.runtime_data.store
     return None

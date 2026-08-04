@@ -1,0 +1,22 @@
+version: 2
+updates:
+  # Keeps the SHA-pinned actions in validate.yaml current. Without this,
+  # pinning to a SHA trades a supply-chain risk for a staleness one.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "ci"
+
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "deps"
+    # The test harness pins an exact Home Assistant version, so bumping it is a
+    # deliberate compatibility decision (and newer releases have raised the
+    # required Python version). Review those by hand.
+    ignore:
+      - dependency-name: pytest-homeassistant-custom-component
