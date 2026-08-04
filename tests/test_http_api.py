@@ -49,6 +49,31 @@ async def test_list_requires_auth(
     assert (await client.get(f"{BASE}/exceptions")).status == 401
 
 
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/exceptions",
+        "/exceptions/whatever",
+        "/exceptions/whatever/frames/0/locals",
+    ],
+)
+async def test_rest_requires_admin(
+    hass: HomeAssistant,
+    captured: dict[str, Any],
+    hass_client: ClientSessionGenerator,
+    hass_read_only_access_token: str,
+    path: str,
+) -> None:
+    """A non-admin user is refused on every REST endpoint.
+
+    Frame locals routinely contain tokens and passwords, so the REST surface
+    must not be a weaker boundary than the admin-gated WebSocket commands.
+    """
+    client = await hass_client(hass_read_only_access_token)
+
+    assert (await client.get(f"{BASE}{path}")).status == 401
+
+
 async def test_list(
     hass: HomeAssistant,
     captured: dict[str, Any],

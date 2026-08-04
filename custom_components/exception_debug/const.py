@@ -34,6 +34,10 @@ MAX_TTL = 86400
 MIN_MAX_REPR = 80
 MAX_MAX_REPR = 100000
 
+# A formatted traceback is legitimately far longer than any single value
+# repr, so its cap is a multiple of max_repr rather than max_repr itself.
+MAX_TRACEBACK_FACTOR = 20
+
 DEFAULT_OPTIONS: dict[str, Any] = {
     CONF_LEVEL: DEFAULT_LEVEL,
     CONF_MAX_ENTRIES: DEFAULT_MAX_ENTRIES,

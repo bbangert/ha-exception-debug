@@ -163,7 +163,7 @@ async def async_setup_entry(
         )
     )
 
-    entry.runtime_data = ExceptionDebugData(store=store, handler=handler)
+    entry.runtime_data = ExceptionDebugData(store=store)
 
     LOGGER.debug(
         "Exception Debug active (level=%s, eval=%s, max_entries=%s, ttl=%ss)",
@@ -190,4 +190,6 @@ def _async_register_services(hass: HomeAssistant) -> None:
     def _clear(call: ServiceCall) -> None:
         async_require_store(hass).clear()
 
-    hass.services.async_register(DOMAIN, "clear", _clear)
+    # Empty-but-strict schema: without it voluptuous is bypassed entirely
+    # and arbitrary extra keys are silently accepted.
+    hass.services.async_register(DOMAIN, "clear", _clear, schema=vol.Schema({}))

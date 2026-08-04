@@ -14,12 +14,14 @@ import traceback
 from types import FrameType, TracebackType
 from typing import Any
 
+from homeassistant.util.json import JsonValueType
+
 
 def safe_repr(value: Any, max_repr: int) -> str:
     """Return a length-capped repr() that never raises."""
     try:
         text = repr(value)
-    except Exception as err:
+    except Exception as err:  # noqa: BLE001 - reprs can raise anything
         return f"<unreprable {type(value).__name__}: {err!r}>"
     if len(text) > max_repr:
         return text[:max_repr] + f"... [truncated {len(text) - max_repr} chars]"
@@ -32,16 +34,23 @@ def iter_frames(tb: TracebackType | None) -> list[tuple[FrameType, int]]:
 
 
 def describe_frame(
-    frame: FrameType, lineno: int, index: int, max_repr: int
-) -> dict[str, Any]:
-    """Return a JSON-serializable summary of a single frame."""
+    frame: FrameType, lineno: int, index: int
+) -> dict[str, JsonValueType]:
+    """Return a JSON-serializable summary of a single frame.
+
+    Local *names* only — values are never included here, so nothing needs
+    length-capping. Use :func:`describe_frame_locals` for values.
+    """
     code = frame.f_code
+    # Annotated so the element type is JsonValueType: list is invariant, so a
+    # bare list[str] would not satisfy the JSON-shaped return type.
+    local_names: list[JsonValueType] = [name for name in sorted(frame.f_locals)]
     return {
         "index": index,
         "filename": code.co_filename,
         "lineno": lineno,
         "function": code.co_name,
-        "local_names": sorted(frame.f_locals.keys()),
+        "local_names": local_names,
     }
 
 
@@ -63,14 +72,14 @@ def eval_in_frame(frame: FrameType, source: str, max_repr: int) -> dict[str, Any
     locs = dict(frame.f_locals)
     try:
         compiled = compile(source, "<exception_debug>", "eval")
-        value = eval(compiled, globs, locs)
+        value = eval(compiled, globs, locs)  # noqa: S307 - the whole point of this tool
         return {"ok": True, "mode": "eval", "result": safe_repr(value, max_repr)}
     except SyntaxError:
         # Not an expression - run as one or more statements.
         try:
             compiled = compile(source, "<exception_debug>", "exec")
-            exec(compiled, globs, locs)
-        except Exception as err:
+            exec(compiled, globs, locs)  # noqa: S102 - the whole point of this tool
+        except Exception as err:  # noqa: BLE001 - user code raises anything
             return {
                 "ok": False,
                 "mode": "exec",
@@ -84,7 +93,7 @@ def eval_in_frame(frame: FrameType, source: str, max_repr: int) -> dict[str, Any
             "result": None,
             "locals": {name: safe_repr(val, max_repr) for name, val in locs.items()},
         }
-    except Exception as err:
+    except Exception as err:  # noqa: BLE001 - user code raises anything
         return {
             "ok": False,
             "mode": "eval",

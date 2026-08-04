@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import logging
+import threading
 import traceback
 
 import pytest
 
+from custom_components.exception_debug.const import MIN_MAX_REPR
 from custom_components.exception_debug.store import (
+    CapturedException,
     ExceptionStore,
     FrameIndexError,
     LiveFramesExpired,
@@ -18,11 +21,15 @@ from .helpers import FRAME_COUNT, MARKER, RAISING_FRAME, make_exc_info
 NOW = 1_000_000.0
 
 
-def _store(max_entries: int = 3, ttl: float = 100.0, max_repr: int = 2000):
+def _store(
+    max_entries: int = 3, ttl: float = 100.0, max_repr: int = 2000
+) -> ExceptionStore:
     return ExceptionStore(max_entries=max_entries, ttl=ttl, max_repr=max_repr)
 
 
-def _add(store: ExceptionStore, now: float = NOW, live: bool = True):
+def _add(
+    store: ExceptionStore, now: float = NOW, live: bool = True
+) -> CapturedException:
     """Add one real captured exception to ``store``."""
     exc_type, exc_value, tb = make_exc_info()
     return store.add(
@@ -33,7 +40,7 @@ def _add(store: ExceptionStore, now: float = NOW, live: bool = True):
         exc_type=exc_type.__name__,
         exc_value_repr=repr(exc_value),
         tb=tb if live else None,
-        formatted="".join(traceback.format_exception(exc_type, exc_value, tb)),
+        te=traceback.TracebackException(exc_type, exc_value, tb, lookup_lines=False),
         root_cause={"filename": "helpers.py", "lineno": 1, "function": "_inner"},
     )
 
@@ -44,7 +51,6 @@ def test_add_returns_live_entry() -> None:
     entry = _add(store)
 
     assert entry.is_live
-    assert entry.count == 1
     assert entry.exc_type == "ValueError"
     assert entry.live_expires == NOW + 100.0
     assert len(entry.frames()) == FRAME_COUNT
@@ -153,7 +159,7 @@ def test_full_traceback_falls_back_to_value_repr() -> None:
     """An entry stored without formatted text still renders something."""
     store = _store()
     entry = _add(store)
-    entry.formatted = ""
+    entry._te = None
 
     assert "ValueError" in store.full_traceback(entry)
 
@@ -169,6 +175,121 @@ def test_summary_shape() -> None:
     assert summary["logger"] == "tests"
     assert summary["level"] == logging.ERROR
     assert summary["exc_type"] == "ValueError"
-    assert summary["count"] == 1
     assert summary["live"] is True
     assert summary["root_cause"]["function"] == "_inner"
+
+
+def _write_until(
+    store: ExceptionStore, stop: threading.Event, errors: list[BaseException]
+) -> None:
+    """Add entries continuously until told to stop.
+
+    Continuous rather than a fixed count: a writer that finishes early never
+    overlaps the reader, which is exactly why a naive version of this test
+    passes even with the lock removed.
+    """
+    exc_type, _exc_value, tb = make_exc_info()
+    try:
+        while not stop.is_set():
+            store.add(
+                now=NOW,
+                logger_name="tests",
+                level=logging.ERROR,
+                message="job failed",
+                exc_type=exc_type.__name__,
+                exc_value_repr="",
+                tb=tb,
+                te=None,
+                root_cause=None,
+            )
+    except BaseException as err:  # noqa: BLE001 - re-asserted on the main thread
+        errors.append(err)
+
+
+def _read_rounds(
+    store: ExceptionStore, stop: threading.Event, errors: list[BaseException]
+) -> None:
+    """Expire and list repeatedly, then release the writer.
+
+    ``expire()`` is the sharp end: it walks ``_entries`` with a Python-level
+    ``for`` loop, so the interpreter can switch threads mid-iteration. A bare
+    ``list()`` proves nothing — it is a single C-level call that never yields
+    the GIL part-way through.
+    """
+    try:
+        for _ in range(2000):
+            store.expire(NOW + 1.0)
+            store.list(limit=5)
+    except BaseException as err:  # noqa: BLE001 - re-asserted on the main thread
+        errors.append(err)
+    finally:
+        stop.set()
+
+
+def test_concurrent_reads_and_writes_do_not_raise() -> None:
+    """Reading on the loop while a logging thread captures must be safe.
+
+    This is the real deployment shape: emit() runs in whatever thread logged,
+    while the expiry timer and the REST/WebSocket/LLM surfaces read from the
+    event loop. Without ExceptionStore's lock this fails with
+    ``RuntimeError: OrderedDict mutated during iteration``.
+    """
+    store = _store(max_entries=200)
+    errors: list[BaseException] = []
+    stop = threading.Event()
+
+    writer = threading.Thread(target=_write_until, args=(store, stop, errors))
+    reader = threading.Thread(target=_read_rounds, args=(store, stop, errors))
+    writer.start()
+    reader.start()
+    reader.join()
+    writer.join()
+
+    assert errors == []
+
+
+def test_negative_frame_index_is_rejected() -> None:
+    """A negative index is refused rather than wrapping to the last frame."""
+    store = _store()
+    entry = _add(store)
+
+    with pytest.raises(FrameIndexError, match="out of range"):
+        entry.frame_locals(-1)
+
+
+def test_formatted_is_not_materialised_at_capture() -> None:
+    """Capture must not pay the cost of formatting the traceback.
+
+    format() reads source files off disk via linecache, and emit() can run on
+    the event loop thread, so the text is built on first read instead.
+    """
+    store = _store()
+    entry = _add(store)
+
+    assert entry._formatted is None
+
+    assert "ValueError: boom" in entry.formatted
+    assert entry._formatted is not None
+
+
+def test_formatted_survives_frame_release() -> None:
+    """The text snapshot outlives the frames it was captured from."""
+    store = _store()
+    entry = _add(store)
+    entry.clear_frames()
+
+    assert not entry.is_live
+    assert "ValueError: boom" in entry.formatted
+    assert "_inner" in entry.formatted
+
+
+def test_full_traceback_is_capped() -> None:
+    """A huge traceback is truncated rather than returned whole."""
+    store = _store(max_repr=MIN_MAX_REPR)
+    entry = _add(store)
+    entry._formatted = "x" * 100_000
+
+    result = store.full_traceback(entry)
+
+    assert len(result) < 100_000
+    assert "truncated" in result

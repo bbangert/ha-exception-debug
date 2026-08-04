@@ -10,17 +10,28 @@ Each :class:`CapturedException` holds the real traceback object while it is
 
 Frames pin everything in scope (``hass``, coordinators, big state dicts), so the
 TTL + cap are the safety valve that stops the debugger from leaking memory.
+
+**Thread safety.** Entries are written by ``ExceptionCaptureHandler.emit`` in
+whatever thread emitted the log record, and read from the event loop by the
+REST/WebSocket/LLM surfaces. ``logging.Handler.handle`` already serialises
+concurrent ``emit`` calls behind the handler's own lock, so writer-vs-writer is
+safe — but reader-vs-writer is not. Without the lock below, iterating
+``_entries`` on the loop while a logging thread inserts raises
+``RuntimeError: OrderedDict mutated during iteration``.
 """
 
 from __future__ import annotations
 
 from collections import OrderedDict
 from dataclasses import dataclass, field
+import threading
 import traceback
-from types import TracebackType
+from types import FrameType, TracebackType
 from typing import Any
 
-from .const import DEFAULT_MAX_REPR
+from homeassistant.util.json import JsonValueType
+
+from .const import DEFAULT_MAX_REPR, MAX_TRACEBACK_FACTOR
 from .introspect import (
     describe_frame,
     describe_frame_locals,
@@ -43,16 +54,31 @@ class CapturedException:
     exc_value_repr: str
     # Live objects. Set to None once cleared by TTL/eviction.
     _tb: TracebackType | None = field(default=None, repr=False)
-    # Text fallback that survives after frames are cleared.
-    formatted: str = ""
+    # Structural snapshot taken at capture time with ``lookup_lines=False``, so
+    # building it costs no disk I/O on the emitting thread. It holds filenames
+    # and line numbers rather than frames, so it outlives ``clear_frames()``.
+    _te: traceback.TracebackException | None = field(default=None, repr=False)
+    _formatted: str | None = field(default=None, repr=False)
     root_cause: dict[str, Any] | None = None
-    count: int = 1
     live_expires: float = 0.0
 
     @property
     def is_live(self) -> bool:
         """Whether the traceback frames are still available for introspection."""
         return self._tb is not None
+
+    @property
+    def formatted(self) -> str:
+        """Return the formatted traceback text, materialised on first read.
+
+        Deliberately lazy: ``TracebackException.format()`` calls
+        ``linecache.getline()`` per frame, which hits the disk the first time a
+        source file is seen. Doing that inside ``emit()`` would put blocking
+        I/O on whatever thread logged — frequently the event loop.
+        """
+        if self._formatted is None:
+            self._formatted = "".join(self._te.format()) if self._te is not None else ""
+        return self._formatted
 
     def clear_frames(self) -> None:
         """Release frame locals but keep the text snapshot and metadata."""
@@ -70,19 +96,21 @@ class CapturedException:
             "message": self.message,
             "exc_type": self.exc_type,
             "exc_value": self.exc_value_repr,
-            "count": self.count,
             "live": self.is_live,
             "root_cause": self.root_cause,
         }
 
-    def frames(self, max_repr: int = DEFAULT_MAX_REPR) -> list[dict[str, Any]]:
+    def frames(self) -> list[JsonValueType]:
         """Return frame summaries (empty if frames were cleared)."""
-        if self._tb is None:
+        # Bind once: another thread may clear frames between the check and use.
+        tb = self._tb
+        if tb is None:
             return []
-        return [
-            describe_frame(frame, lineno, i, max_repr)
-            for i, (frame, lineno) in enumerate(iter_frames(self._tb))
+        described: list[JsonValueType] = [
+            describe_frame(frame, lineno, i)
+            for i, (frame, lineno) in enumerate(iter_frames(tb))
         ]
+        return described
 
     def frame_locals(
         self, frame_index: int, max_repr: int = DEFAULT_MAX_REPR
@@ -98,10 +126,13 @@ class CapturedException:
         frame = self._frame_at(frame_index)
         return eval_in_frame(frame, source, max_repr)
 
-    def _frame_at(self, frame_index: int):
-        if self._tb is None:
+    def _frame_at(self, frame_index: int) -> FrameType:
+        """Return the frame at ``frame_index``, or raise."""
+        # Bind once so a concurrent clear_frames() cannot null it mid-use.
+        tb = self._tb
+        if tb is None:
             raise LiveFramesExpired(self.id)
-        frames = iter_frames(self._tb)
+        frames = iter_frames(tb)
         if frame_index < 0 or frame_index >= len(frames):
             raise FrameIndexError(frame_index, len(frames))
         return frames[frame_index][0]
@@ -127,7 +158,11 @@ class FrameIndexError(IndexError):
 
 
 class ExceptionStore:
-    """Bounded FIFO/TTL store of captured exceptions."""
+    """Bounded FIFO/TTL store of captured exceptions.
+
+    All access is guarded by a re-entrant lock because writes arrive from
+    arbitrary logging threads while reads happen on the event loop.
+    """
 
     def __init__(self, max_entries: int, ttl: float, max_repr: int) -> None:
         """Initialise an empty store with its retention bounds."""
@@ -136,6 +171,8 @@ class ExceptionStore:
         self._ttl = ttl
         self._max_repr = max_repr
         self._counter = 0
+        # Re-entrant: add() calls _enforce_bounds() while already holding it.
+        self._lock = threading.RLock()
 
     @property
     def max_repr(self) -> int:
@@ -156,53 +193,69 @@ class ExceptionStore:
         exc_type: str,
         exc_value_repr: str,
         tb: TracebackType | None,
-        formatted: str,
+        te: traceback.TracebackException | None,
         root_cause: dict[str, Any] | None,
     ) -> CapturedException:
         """Store a new captured exception and enforce bounds."""
-        entry = CapturedException(
-            id=self._next_id(now),
-            timestamp=now,
-            logger_name=logger_name,
-            level=level,
-            message=message,
-            exc_type=exc_type,
-            exc_value_repr=exc_value_repr,
-            _tb=tb,
-            formatted=formatted,
-            root_cause=root_cause,
-            live_expires=now + self._ttl,
-        )
-        self._entries[entry.id] = entry
-        self._enforce_bounds()
-        return entry
+        with self._lock:
+            entry = CapturedException(
+                id=self._next_id(now),
+                timestamp=now,
+                logger_name=logger_name,
+                level=level,
+                message=message,
+                exc_type=exc_type,
+                exc_value_repr=exc_value_repr,
+                _tb=tb,
+                _te=te,
+                root_cause=root_cause,
+                live_expires=now + self._ttl,
+            )
+            self._entries[entry.id] = entry
+            self._enforce_bounds()
+            return entry
 
     def expire(self, now: float) -> None:
         """Clear frames on entries whose live TTL has elapsed."""
-        for entry in self._entries.values():
-            if entry.is_live and now >= entry.live_expires:
-                entry.clear_frames()
+        with self._lock:
+            for entry in self._entries.values():
+                if entry.is_live and now >= entry.live_expires:
+                    entry.clear_frames()
 
     def _enforce_bounds(self) -> None:
+        """Evict oldest entries past the cap. Caller must hold the lock."""
         while len(self._entries) > self._max_entries:
             _, evicted = self._entries.popitem(last=False)
             evicted.clear_frames()
 
     def get(self, entry_id: str) -> CapturedException | None:
         """Return an entry by id, or None."""
-        return self._entries.get(entry_id)
+        with self._lock:
+            return self._entries.get(entry_id)
 
     def list(self, limit: int | None = None) -> list[CapturedException]:
         """Return entries newest-first."""
-        items = list(reversed(self._entries.values()))
+        with self._lock:
+            items = list(reversed(self._entries.values()))
         return items[:limit] if limit else items
 
     def clear(self) -> None:
         """Drop all entries and release their frames."""
-        for entry in self._entries.values():
-            entry.clear_frames()
-        self._entries.clear()
+        with self._lock:
+            for entry in self._entries.values():
+                entry.clear_frames()
+            self._entries.clear()
 
     def full_traceback(self, entry: CapturedException) -> str:
-        """Return the stored formatted traceback text for an entry."""
-        return entry.formatted or safe_repr(entry.exc_value_repr, self._max_repr)
+        """Return the stored traceback text, length-capped.
+
+        Capped because nothing else bounds it: a traceback through many
+        distinct frames can be large, and entries are retained until evicted.
+        (Runaway *recursion* is already collapsed by ``traceback`` itself via
+        its "[Previous line repeated N more times]" cutoff.)
+        """
+        text = entry.formatted or safe_repr(entry.exc_value_repr, self._max_repr)
+        limit = self._max_repr * MAX_TRACEBACK_FACTOR
+        if len(text) > limit:
+            return text[:limit] + f"... [truncated {len(text) - limit} chars]"
+        return text

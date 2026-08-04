@@ -28,6 +28,7 @@
     "step": {
       "init": {
         "title": "Exception Debug options",
+        "description": "Saving reloads the integration, which starts a fresh capture buffer — any exceptions captured so far are discarded.",
         "data": {
           "level": "Capture level",
           "max_entries": "Maximum retained exceptions",

@@ -1,15 +1,22 @@
 {
   "domain": "exception_debug",
   "name": "Exception Debug",
-  "codeowners": ["@bbangert"],
+  "codeowners": [
+    "@bbangert"
+  ],
   "config_flow": true,
-  "dependencies": ["http", "websocket_api"],
+  "dependencies": [
+    "http",
+    "websocket_api"
+  ],
   "documentation": "https://github.com/bbangert/ha-exception-debug",
   "integration_type": "service",
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/bbangert/ha-exception-debug/issues",
-  "loggers": ["custom_components.exception_debug"],
+  "loggers": [
+    "custom_components.exception_debug"
+  ],
   "requirements": [],
   "single_config_entry": true,
-  "version": "0.2.0"
+  "version": "0.3.0"
 }

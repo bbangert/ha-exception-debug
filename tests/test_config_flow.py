@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from homeassistant.config_entries import SOURCE_IMPORT, SOURCE_USER
@@ -20,6 +21,7 @@ from custom_components.exception_debug.const import (
     DOMAIN,
     TITLE,
 )
+from custom_components.exception_debug.handler import ExceptionCaptureHandler
 
 USER_INPUT: dict[str, Any] = {
     CONF_LEVEL: "warning",
@@ -124,6 +126,13 @@ async def test_options_flow_updates_and_reloads(
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert setup_integration.options == USER_INPUT
-    # OptionsFlowWithReload reloaded the entry, so the store reflects the
-    # new bounds rather than the ones it was first built with.
+    # OptionsFlowWithReload reloaded the entry, so the running integration
+    # reflects the new settings rather than the ones it was first built with.
     assert setup_integration.runtime_data.store.max_repr == 500
+    # The capture level is the whole point of the reload, so assert it moved.
+    capture_handlers = [
+        handler
+        for handler in logging.root.handlers
+        if isinstance(handler, ExceptionCaptureHandler)
+    ]
+    assert [h.level for h in capture_handlers] == [logging.WARNING]

@@ -2,8 +2,13 @@
 
 These mirror the LLM tools for clients that speak plain HTTP (curl, an AI
 agent with a long-lived access token) or the HA WebSocket API (a frontend
-panel). Every view requires auth; the WebSocket commands additionally require
-an admin user.
+panel).
+
+**Every surface here is admin-only.** Captured frame locals contain the values
+that were in scope when an integration failed — routinely API tokens,
+passwords and session objects. Authentication alone is not a sufficient
+boundary for that, and the REST views must not be weaker than the equivalent
+WebSocket commands, which are gated with ``websocket_api.require_admin``.
 
 Registered once from :func:`homeassistant.setup.async_setup_component`, so the
 store is resolved per request from the loaded config entry rather than captured
@@ -16,7 +21,7 @@ from typing import Any
 
 from aiohttp import web
 from homeassistant.components import websocket_api
-from homeassistant.components.http import HomeAssistantView
+from homeassistant.components.http import HomeAssistantView, require_admin
 from homeassistant.core import HomeAssistant, callback
 import voluptuous as vol
 
@@ -35,6 +40,7 @@ class ExceptionListView(HomeAssistantView):
     name = "api:exception_debug:list"
     requires_auth = True
 
+    @require_admin
     async def get(self, request: web.Request) -> web.Response:
         """Return summaries of the captured exceptions."""
         hass: HomeAssistant = request.app["hass"]
@@ -55,6 +61,7 @@ class ExceptionDetailView(HomeAssistantView):
     name = "api:exception_debug:detail"
     requires_auth = True
 
+    @require_admin
     async def get(self, request: web.Request, entry_id: str) -> web.Response:
         """Return one exception with its traceback text and frames."""
         hass: HomeAssistant = request.app["hass"]
@@ -79,6 +86,7 @@ class FrameLocalsView(HomeAssistantView):
     name = "api:exception_debug:frame_locals"
     requires_auth = True
 
+    @require_admin
     async def get(
         self, request: web.Request, entry_id: str, frame_index: str
     ) -> web.Response:
