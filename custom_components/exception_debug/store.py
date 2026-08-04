@@ -37,7 +37,6 @@ from .introspect import (
     describe_frame_locals,
     eval_in_frame,
     iter_frames,
-    safe_repr,
 )
 
 
@@ -100,13 +99,13 @@ class CapturedException:
             "root_cause": self.root_cause,
         }
 
-    def frames(self) -> list[JsonValueType]:
+    def frames(self) -> list[dict[str, JsonValueType]]:
         """Return frame summaries (empty if frames were cleared)."""
         # Bind once: another thread may clear frames between the check and use.
         tb = self._tb
         if tb is None:
             return []
-        described: list[JsonValueType] = [
+        described: list[dict[str, JsonValueType]] = [
             describe_frame(frame, lineno, i)
             for i, (frame, lineno) in enumerate(iter_frames(tb))
         ]
@@ -254,7 +253,10 @@ class ExceptionStore:
         (Runaway *recursion* is already collapsed by ``traceback`` itself via
         its "[Previous line repeated N more times]" cutoff.)
         """
-        text = entry.formatted or safe_repr(entry.exc_value_repr, self._max_repr)
+        # exc_value_repr is already safe_repr() output from capture time, so it
+        # is used as-is: running repr() over it again would add a second layer
+        # of quotes and escaping to what callers see.
+        text = entry.formatted or entry.exc_value_repr
         limit = self._max_repr * MAX_TRACEBACK_FACTOR
         if len(text) > limit:
             return text[:limit] + f"... [truncated {len(text) - limit} chars]"

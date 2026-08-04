@@ -156,12 +156,21 @@ def test_clear_frames_is_idempotent() -> None:
 
 
 def test_full_traceback_falls_back_to_value_repr() -> None:
-    """An entry stored without formatted text still renders something."""
+    """The fallback renders the exception repr, not a repr *of* that repr.
+
+    exc_value_repr is already safe_repr() output, so passing it through
+    safe_repr() again would wrap it in a second layer of quotes and escaping
+    that callers would see in REST and LLM responses.
+    """
     store = _store()
     entry = _add(store)
     entry._te = None
 
-    assert "ValueError" in store.full_traceback(entry)
+    result = store.full_traceback(entry)
+
+    assert result == entry.exc_value_repr
+    assert result.startswith("ValueError(")
+    assert not result.startswith(('"', "'"))
 
 
 def test_summary_shape() -> None:
