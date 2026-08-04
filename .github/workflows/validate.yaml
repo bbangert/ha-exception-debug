@@ -108,11 +108,16 @@ jobs:
           python-version: "3.13"
           cache: pip
       - name: Install dependencies
+        # Do not pin pytest-cov here: the harness pins an exact version of it
+        # (6.2.1 on the floor, 7.0.0 on current), so pinning it again makes the
+        # resolve impossible on whichever leg disagrees.
         run: |
           python -m pip install --upgrade pip
           python -m pip install \
             "pytest-homeassistant-custom-component==${{ matrix.phacc }}" \
-            "pytest-cov==7.0.0" ${{ matrix.extra }}
+            ${{ matrix.extra }}
+      - name: Verify the dependency graph is consistent
+        run: pip check
       - name: Run pytest
         run: >-
           pytest
