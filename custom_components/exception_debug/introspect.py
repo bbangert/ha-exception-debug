@@ -19,7 +19,7 @@ def safe_repr(value: Any, max_repr: int) -> str:
     """Return a length-capped repr() that never raises."""
     try:
         text = repr(value)
-    except Exception as err:  # noqa: BLE001 - reprs can raise anything
+    except Exception as err:
         return f"<unreprable {type(value).__name__}: {err!r}>"
     if len(text) > max_repr:
         return text[:max_repr] + f"... [truncated {len(text) - max_repr} chars]"
@@ -45,18 +45,14 @@ def describe_frame(
     }
 
 
-def describe_frame_locals(
-    frame: FrameType, max_repr: int
-) -> dict[str, str]:
+def describe_frame_locals(frame: FrameType, max_repr: int) -> dict[str, str]:
     """Return {name: safe_repr(value)} for a frame's locals."""
     # Copy first: f_locals may be a write-through proxy (PEP 667, py3.13).
     items = dict(frame.f_locals)
     return {name: safe_repr(value, max_repr) for name, value in items.items()}
 
 
-def eval_in_frame(
-    frame: FrameType, source: str, max_repr: int
-) -> dict[str, Any]:
+def eval_in_frame(frame: FrameType, source: str, max_repr: int) -> dict[str, Any]:
     """Evaluate ``source`` in the context of ``frame``.
 
     Tries eval() first (expression) then falls back to exec() (statements).
@@ -67,14 +63,14 @@ def eval_in_frame(
     locs = dict(frame.f_locals)
     try:
         compiled = compile(source, "<exception_debug>", "eval")
-        value = eval(compiled, globs, locs)  # noqa: S307 - intentional
+        value = eval(compiled, globs, locs)
         return {"ok": True, "mode": "eval", "result": safe_repr(value, max_repr)}
     except SyntaxError:
         # Not an expression - run as one or more statements.
         try:
             compiled = compile(source, "<exception_debug>", "exec")
-            exec(compiled, globs, locs)  # noqa: S102 - intentional
-        except Exception as err:  # noqa: BLE001
+            exec(compiled, globs, locs)
+        except Exception as err:
             return {
                 "ok": False,
                 "mode": "exec",
@@ -86,11 +82,9 @@ def eval_in_frame(
             "ok": True,
             "mode": "exec",
             "result": None,
-            "locals": {
-                name: safe_repr(val, max_repr) for name, val in locs.items()
-            },
+            "locals": {name: safe_repr(val, max_repr) for name, val in locs.items()},
         }
-    except Exception as err:  # noqa: BLE001
+    except Exception as err:
         return {
             "ok": False,
             "mode": "eval",

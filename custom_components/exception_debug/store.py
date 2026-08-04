@@ -14,9 +14,9 @@ TTL + cap are the safety valve that stops the debugger from leaking memory.
 
 from __future__ import annotations
 
-import traceback
 from collections import OrderedDict
 from dataclasses import dataclass, field
+import traceback
 from types import TracebackType
 from typing import Any
 
@@ -111,6 +111,7 @@ class LiveFramesExpired(RuntimeError):
     """Raised when frames for an entry have already been cleared."""
 
     def __init__(self, entry_id: str) -> None:
+        """Initialise with the id whose frames were released."""
         super().__init__(
             f"Live frames for exception '{entry_id}' have expired; "
             "only the text traceback remains."
@@ -121,6 +122,7 @@ class FrameIndexError(IndexError):
     """Raised for an out-of-range frame index."""
 
     def __init__(self, requested: int, count: int) -> None:
+        """Initialise with the requested index and the frame count."""
         super().__init__(f"Frame index {requested} out of range (0..{count - 1}).")
 
 
@@ -128,6 +130,7 @@ class ExceptionStore:
     """Bounded FIFO/TTL store of captured exceptions."""
 
     def __init__(self, max_entries: int, ttl: float, max_repr: int) -> None:
+        """Initialise an empty store with its retention bounds."""
         self._entries: OrderedDict[str, CapturedException] = OrderedDict()
         self._max_entries = max_entries
         self._ttl = ttl

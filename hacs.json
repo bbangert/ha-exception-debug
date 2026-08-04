@@ -2,5 +2,5 @@
   "name": "Exception Debug",
   "content_in_root": false,
   "render_readme": true,
-  "homeassistant": "2025.2.0"
+  "homeassistant": "2025.8.0"
 }

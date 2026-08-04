@@ -2,28 +2,30 @@
 
 These mirror the LLM tools for clients that speak plain HTTP (curl, an AI
 agent with a long-lived access token) or the HA WebSocket API (a frontend
-panel). Every view requires auth; the eval endpoint additionally requires an
-admin user and the ``enable_eval`` option.
+panel). Every view requires auth; the WebSocket commands additionally require
+an admin user.
+
+Registered once from :func:`homeassistant.setup.async_setup_component`, so the
+store is resolved per request from the loaded config entry rather than captured
+at registration time — that keeps these surfaces correct across reloads.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-import voluptuous as vol
 from aiohttp import web
 from homeassistant.components import websocket_api
 from homeassistant.components.http import HomeAssistantView
 from homeassistant.core import HomeAssistant, callback
+import voluptuous as vol
 
-from .const import DATA_STORE, DOMAIN
-from .store import ExceptionStore, FrameIndexError, LiveFramesExpired
+from .data import async_get_store
+from .store import FrameIndexError, LiveFramesExpired
 
 BASE_URL = "/api/exception_debug"
 
-
-def _store(hass: HomeAssistant) -> ExceptionStore:
-    return hass.data[DOMAIN][DATA_STORE]
+NOT_CONFIGURED = "Exception Debug is not set up"
 
 
 class ExceptionListView(HomeAssistantView):
@@ -34,12 +36,15 @@ class ExceptionListView(HomeAssistantView):
     requires_auth = True
 
     async def get(self, request: web.Request) -> web.Response:
+        """Return summaries of the captured exceptions."""
         hass: HomeAssistant = request.app["hass"]
+        if (store := async_get_store(hass)) is None:
+            return self.json_message(NOT_CONFIGURED, status_code=503)
         try:
             limit = int(request.query.get("limit", "20"))
         except ValueError:
             limit = 20
-        entries = _store(hass).list(limit=limit)
+        entries = store.list(limit=limit)
         return self.json({"exceptions": [e.summary() for e in entries]})
 
 
@@ -51,8 +56,10 @@ class ExceptionDetailView(HomeAssistantView):
     requires_auth = True
 
     async def get(self, request: web.Request, entry_id: str) -> web.Response:
+        """Return one exception with its traceback text and frames."""
         hass: HomeAssistant = request.app["hass"]
-        store = _store(hass)
+        if (store := async_get_store(hass)) is None:
+            return self.json_message(NOT_CONFIGURED, status_code=503)
         entry = store.get(entry_id)
         if entry is None:
             return self.json_message("Unknown exception id", status_code=404)
@@ -75,8 +82,11 @@ class FrameLocalsView(HomeAssistantView):
     async def get(
         self, request: web.Request, entry_id: str, frame_index: str
     ) -> web.Response:
+        """Return the local variables of one frame."""
         hass: HomeAssistant = request.app["hass"]
-        entry = _store(hass).get(entry_id)
+        if (store := async_get_store(hass)) is None:
+            return self.json_message(NOT_CONFIGURED, status_code=503)
+        entry = store.get(entry_id)
         if entry is None:
             return self.json_message("Unknown exception id", status_code=404)
         try:
@@ -112,7 +122,10 @@ def ws_list(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
 ) -> None:
     """List captured exceptions."""
-    entries = _store(hass).list(limit=msg["limit"])
+    if (store := async_get_store(hass)) is None:
+        connection.send_error(msg["id"], "not_loaded", NOT_CONFIGURED)
+        return
+    entries = store.list(limit=msg["limit"])
     connection.send_result(msg["id"], {"exceptions": [e.summary() for e in entries]})
 
 
@@ -128,7 +141,10 @@ def ws_frames(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
 ) -> None:
     """List frames for a captured exception."""
-    entry = _store(hass).get(msg["exc_id"])
+    if (store := async_get_store(hass)) is None:
+        connection.send_error(msg["id"], "not_loaded", NOT_CONFIGURED)
+        return
+    entry = store.get(msg["exc_id"])
     if entry is None:
         connection.send_error(msg["id"], "not_found", "Unknown exception id")
         return
@@ -148,7 +164,10 @@ def ws_frame_locals(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
 ) -> None:
     """Return locals for a frame of a captured exception."""
-    entry = _store(hass).get(msg["exc_id"])
+    if (store := async_get_store(hass)) is None:
+        connection.send_error(msg["id"], "not_loaded", NOT_CONFIGURED)
+        return
+    entry = store.get(msg["exc_id"])
     if entry is None:
         connection.send_error(msg["id"], "not_found", "Unknown exception id")
         return

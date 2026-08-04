@@ -1,0 +1,70 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Exception Debug",
+        "description": "Retain live traceback frames for recent Home Assistant exceptions so they can be inspected after the fact. All of these can be changed later from the integration's options.",
+        "data": {
+          "level": "Capture level",
+          "max_entries": "Maximum retained exceptions",
+          "ttl": "Live frame retention (seconds)",
+          "max_repr": "Maximum repr length",
+          "enable_eval": "Enable evaluating code in a captured frame"
+        },
+        "data_description": {
+          "level": "Only log records at or above this level are captured.",
+          "max_entries": "Oldest exceptions are dropped once this many are retained.",
+          "ttl": "How long a captured exception keeps its inspectable frames. Frames pin every local variable in scope, so a shorter value uses less memory. The text traceback is kept either way. Set to 0 to release frames immediately.",
+          "max_repr": "Values longer than this are truncated before being returned.",
+          "enable_eval": "Lets an authenticated caller run arbitrary Python inside a captured frame. This is remote code execution with full access to your Home Assistant instance — only enable it while actively debugging."
+        }
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Already configured. Only a single configuration is allowed."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Exception Debug options",
+        "data": {
+          "level": "Capture level",
+          "max_entries": "Maximum retained exceptions",
+          "ttl": "Live frame retention (seconds)",
+          "max_repr": "Maximum repr length",
+          "enable_eval": "Enable evaluating code in a captured frame"
+        },
+        "data_description": {
+          "level": "Only log records at or above this level are captured.",
+          "max_entries": "Oldest exceptions are dropped once this many are retained.",
+          "ttl": "How long a captured exception keeps its inspectable frames. Frames pin every local variable in scope, so a shorter value uses less memory. The text traceback is kept either way. Set to 0 to release frames immediately.",
+          "max_repr": "Values longer than this are truncated before being returned.",
+          "enable_eval": "Lets an authenticated caller run arbitrary Python inside a captured frame. This is remote code execution with full access to your Home Assistant instance — only enable it while actively debugging."
+        }
+      }
+    }
+  },
+  "selector": {
+    "level": {
+      "options": {
+        "debug": "Debug",
+        "info": "Info",
+        "warning": "Warning",
+        "error": "Error",
+        "critical": "Critical"
+      }
+    }
+  },
+  "issues": {
+    "deprecated_yaml": {
+      "title": "YAML configuration of Exception Debug is deprecated",
+      "description": "Configuring Exception Debug in `configuration.yaml` is deprecated and your settings have been imported into the UI.\n\nRemove the `exception_debug:` block from `configuration.yaml` and restart Home Assistant to resolve this issue. Settings can then be changed from Settings > Devices & services > Exception Debug > Configure."
+    }
+  },
+  "exceptions": {
+    "not_configured": {
+      "message": "Exception Debug is not set up, so there is nothing to act on."
+    }
+  }
+}

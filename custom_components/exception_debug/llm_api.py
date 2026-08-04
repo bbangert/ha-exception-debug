@@ -10,10 +10,10 @@ from __future__ import annotations
 
 from typing import Any
 
-import voluptuous as vol
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import llm
 from homeassistant.util.json import JsonObjectType
+import voluptuous as vol
 
 from .const import LLM_API_ID, LLM_API_NAME
 from .store import ExceptionStore, FrameIndexError, LiveFramesExpired
@@ -33,6 +33,7 @@ class ExceptionDebugAPI(llm.API):
     def __init__(
         self, hass: HomeAssistant, store: ExceptionStore, enable_eval: bool
     ) -> None:
+        """Initialise the API over ``store``."""
         super().__init__(hass=hass, id=LLM_API_ID, name=LLM_API_NAME)
         self._store = store
         self._enable_eval = enable_eval
@@ -61,6 +62,7 @@ class _StoreTool(llm.Tool):
     """Base tool holding a reference to the store."""
 
     def __init__(self, store: ExceptionStore) -> None:
+        """Initialise the tool with the store it reads from."""
         self._store = store
 
 
@@ -74,8 +76,12 @@ class ListExceptionsTool(_StoreTool):
     )
 
     async def async_call(
-        self, hass: HomeAssistant, tool_input: llm.ToolInput, llm_context: llm.LLMContext
+        self,
+        hass: HomeAssistant,
+        tool_input: llm.ToolInput,
+        llm_context: llm.LLMContext,
     ) -> JsonObjectType:
+        """Return summaries of recently captured exceptions."""
         limit = tool_input.tool_args.get("limit", 20)
         entries = self._store.list(limit=limit)
         return {"exceptions": [e.summary() for e in entries]}
@@ -89,8 +95,12 @@ class GetTracebackTool(_StoreTool):
     parameters = vol.Schema({vol.Required("id"): str})
 
     async def async_call(
-        self, hass: HomeAssistant, tool_input: llm.ToolInput, llm_context: llm.LLMContext
+        self,
+        hass: HomeAssistant,
+        tool_input: llm.ToolInput,
+        llm_context: llm.LLMContext,
     ) -> JsonObjectType:
+        """Return the formatted traceback text for an exception."""
         entry = self._store.get(tool_input.tool_args["id"])
         if entry is None:
             return _not_found(tool_input.tool_args["id"])
@@ -113,8 +123,12 @@ class GetFramesTool(_StoreTool):
     parameters = vol.Schema({vol.Required("id"): str})
 
     async def async_call(
-        self, hass: HomeAssistant, tool_input: llm.ToolInput, llm_context: llm.LLMContext
+        self,
+        hass: HomeAssistant,
+        tool_input: llm.ToolInput,
+        llm_context: llm.LLMContext,
     ) -> JsonObjectType:
+        """Return the frame summaries for an exception."""
         entry = self._store.get(tool_input.tool_args["id"])
         if entry is None:
             return _not_found(tool_input.tool_args["id"])
@@ -129,13 +143,15 @@ class GetFrameLocalsTool(_StoreTool):
         "Return {name: repr} of local variables for a given frame index of a "
         "captured exception."
     )
-    parameters = vol.Schema(
-        {vol.Required("id"): str, vol.Required("frame"): int}
-    )
+    parameters = vol.Schema({vol.Required("id"): str, vol.Required("frame"): int})
 
     async def async_call(
-        self, hass: HomeAssistant, tool_input: llm.ToolInput, llm_context: llm.LLMContext
+        self,
+        hass: HomeAssistant,
+        tool_input: llm.ToolInput,
+        llm_context: llm.LLMContext,
     ) -> JsonObjectType:
+        """Return the local variables of one frame."""
         entry = self._store.get(tool_input.tool_args["id"])
         if entry is None:
             return _not_found(tool_input.tool_args["id"])
@@ -167,8 +183,12 @@ class EvalInFrameTool(_StoreTool):
     )
 
     async def async_call(
-        self, hass: HomeAssistant, tool_input: llm.ToolInput, llm_context: llm.LLMContext
+        self,
+        hass: HomeAssistant,
+        tool_input: llm.ToolInput,
+        llm_context: llm.LLMContext,
     ) -> JsonObjectType:
+        """Evaluate the given source in the chosen frame."""
         entry = self._store.get(tool_input.tool_args["id"])
         if entry is None:
             return _not_found(tool_input.tool_args["id"])

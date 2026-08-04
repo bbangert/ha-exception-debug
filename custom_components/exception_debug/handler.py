@@ -25,6 +25,7 @@ class ExceptionCaptureHandler(logging.Handler):
     """A logging handler that retains live exception objects."""
 
     def __init__(self, store: ExceptionStore, level: int) -> None:
+        """Initialise the handler with its store and capture level."""
         super().__init__(level)
         self._store = store
 
@@ -52,12 +53,10 @@ class ExceptionCaptureHandler(logging.Handler):
                 exc_type=getattr(exc_type, "__name__", str(exc_type)),
                 exc_value_repr=safe_repr(exc_value, self._store.max_repr),
                 tb=tb,
-                formatted="".join(
-                    traceback.format_exception(exc_type, exc_value, tb)
-                ),
+                formatted="".join(traceback.format_exception(exc_type, exc_value, tb)),
                 root_cause=self._root_cause(tb),
             )
-        except Exception:  # noqa: BLE001 - a handler must never raise
+        except Exception:
             # Last resort: hand off to logging's own error machinery.
             self.handleError(record)
 
@@ -65,7 +64,7 @@ class ExceptionCaptureHandler(logging.Handler):
     def _safe_message(record: logging.LogRecord) -> str:
         try:
             return record.getMessage()
-        except Exception as err:  # noqa: BLE001
+        except Exception as err:
             return f"<unformattable log message: {err!r}>"
 
     @staticmethod

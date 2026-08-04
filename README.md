@@ -35,30 +35,49 @@ inside the originating `except` block.
 Captured exceptions are held in a bounded, TTL-aware store. Once an entry's
 live window (`ttl`) elapses — or it is evicted past `max_entries` — its frames
 are cleared with `traceback.clear_frames()` to release locals, while a text
-snapshot of the traceback is retained so the entry stays listable.
+snapshot of the traceback is retained so the entry stays listable. A timer
+applies the TTL once a minute, so frames are released on a quiet system too and
+not only when the next exception happens to arrive.
+
+## Requirements
+
+Home Assistant **2025.8.0** or newer.
 
 ## Installation (HACS)
 
 1. In HACS, add this repository as a **custom repository** (category:
    *Integration*): `https://github.com/bbangert/ha-exception-debug`.
 2. Install **Exception Debug** and restart Home Assistant.
-3. Add configuration (below) and restart again.
+3. Go to **Settings → Devices & services → Add integration** and pick
+   **Exception Debug**.
 
 Manual install: copy `custom_components/exception_debug/` into your Home
-Assistant `config/custom_components/` directory.
+Assistant `config/custom_components/` directory, restart, then add the
+integration from the UI as above.
 
 ## Configuration
 
-This integration is configured via YAML in `configuration.yaml`:
+Everything is configured from the UI — on first setup, and afterwards via
+**Settings → Devices & services → Exception Debug → Configure**. Changing an
+option reloads the integration immediately; no restart needed.
 
-```yaml
-exception_debug:
-  level: error          # debug | info | warning | error | critical (min level to capture)
-  max_entries: 50       # how many exceptions to retain
-  ttl: 900              # seconds a captured exception keeps its live frames
-  max_repr: 2000        # max characters returned for any single repr()
-  enable_eval: false    # set true to allow eval_in_frame (arbitrary code execution)
-```
+| Option | Default | Meaning |
+| --- | --- | --- |
+| Capture level | `error` | Minimum log level to capture (`debug` … `critical`). |
+| Maximum retained exceptions | `50` | Oldest are evicted past this count. |
+| Live frame retention | `900` s | How long an entry keeps inspectable frames. `0` releases them immediately. |
+| Maximum repr length | `2000` | Cap on the characters returned for any single value. |
+| Enable eval | off | Allows `eval_in_frame` — arbitrary code execution. |
+
+Only one instance can be configured, since the capture hook is global.
+
+### Migrating from YAML
+
+Earlier versions were configured in `configuration.yaml`. That still works for
+one more startup: the block is imported into a config entry automatically and a
+repair issue tells you to delete it. Remove the `exception_debug:` block from
+`configuration.yaml` once you have restarted — after the import, the YAML is
+ignored and the UI options are authoritative.
 
 ## Using it with an AI agent (MCP)
 
@@ -108,9 +127,22 @@ exception_debug/frame_locals   {exc_id, frame}
 - Root-logger handlers do not see loggers with `propagate = False` (rare in HA).
 - `eval_in_frame` runs on the event loop; a blocking snippet will block Home
   Assistant. Use it deliberately.
-- To have the HACS brands check pass fully, the `exception_debug` domain must be
-  added to the [home-assistant/brands](https://github.com/home-assistant/brands)
-  repository. This is a separate PR and only affects the icon/brand validation.
+- The icon ships in-repo under `custom_components/exception_debug/brand/`, which
+  satisfies the HACS brands check. Adding `exception_debug` to
+  [home-assistant/brands](https://github.com/home-assistant/brands) is only
+  needed to appear in the default HACS store.
+
+## Development
+
+```bash
+python -m venv .venv && .venv/bin/pip install -r requirements_test.txt
+.venv/bin/pytest --cov=custom_components.exception_debug --cov-report=term-missing
+.venv/bin/ruff format --check custom_components tests
+.venv/bin/ruff check custom_components tests
+```
+
+CI runs hassfest, HACS validation, ruff and the test suite (which is gated at
+100% coverage) on every push and pull request.
 
 ## License
 

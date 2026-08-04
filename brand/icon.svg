@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- Exception Debug: inspect (magnifier) an error (exclamation). -->
+  <g fill="none" stroke-linecap="round">
+    <!-- handle -->
+    <line x1="296" y1="296" x2="450" y2="450" stroke="#0288D1" stroke-width="56"/>
+    <!-- lens rim -->
+    <circle cx="198" cy="198" r="132" stroke="#03A9F4" stroke-width="38"/>
+  </g>
+  <!-- exclamation inside the lens -->
+  <g fill="#FF9800">
+    <rect x="178" y="110" width="40" height="110" rx="20"/>
+    <circle cx="198" cy="268" r="23"/>
+  </g>
+</svg>
