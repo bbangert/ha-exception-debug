@@ -41,7 +41,12 @@ not only when the next exception happens to arrive.
 
 ## Requirements
 
-Home Assistant **2025.8.0** or newer.
+- Home Assistant **2025.8.0** or newer.
+- For the AI/agent path, the core
+  [Model Context Protocol Server](https://www.home-assistant.io/integrations/mcp_server/)
+  integration. See [Using it with an AI agent (MCP)](#using-it-with-an-ai-agent-mcp)
+  — **if you already have it configured, it has to be deleted and re-added**,
+  because it has no options flow. The REST and WebSocket APIs work without it.
 
 ## Installation (HACS)
 
@@ -50,6 +55,10 @@ Home Assistant **2025.8.0** or newer.
 2. Install **Exception Debug** and restart Home Assistant.
 3. Go to **Settings → Devices & services → Add integration** and pick
    **Exception Debug**.
+4. Only if you want the AI/agent path: set up (or re-add) the **Model Context
+   Protocol Server** integration — see
+   [Using it with an AI agent (MCP)](#using-it-with-an-ai-agent-mcp). Do this
+   *after* step 3, so Exception Debug is available to select.
 
 Manual install: copy `custom_components/exception_debug/` into your Home
 Assistant `config/custom_components/` directory, restart, then add the
@@ -81,14 +90,42 @@ ignored and the UI options are authoritative.
 
 ## Using it with an AI agent (MCP)
 
-This integration registers a Home Assistant **LLM API** named
-*"Home Assistant Exception Debugger"*. To expose it to an agent:
+This integration does not speak MCP itself. It registers a Home Assistant
+**LLM API** named *"Home Assistant Exception Debugger"*, which the core
+[Model Context Protocol Server](https://www.home-assistant.io/integrations/mcp_server/)
+integration exposes to agents. You need that integration set up as well —
+without it there is no MCP endpoint and the tools below are unreachable.
 
-1. Set up the core [Model Context Protocol Server](https://www.home-assistant.io/integrations/mcp_server/)
-   integration.
-2. In its options, tick **Home Assistant Exception Debugger** as an exposed API.
-3. Point your MCP client at `https://<your-ha>/api/mcp` with a long-lived
+> ⚠️ **If you already have the MCP Server integration configured, you must
+> delete its config entry and add it again.** It has no options flow, so the
+> set of exposed APIs is fixed when the entry is created and cannot be edited
+> afterwards. It also allows only one entry, so you cannot add a second
+> alongside the existing one.
+
+### If you do not have MCP Server yet
+
+1. Set up **Exception Debug** first (above). The MCP Server flow lists the APIs
+   that are registered *at the moment you run it*, so this one has to be loaded
+   already or it will not appear as a choice.
+2. Add the **Model Context Protocol Server** integration.
+3. In the setup dialog, select **both** *Assist* and *Home Assistant Exception
+   Debugger*. The field accepts multiple values and defaults to *Assist* alone.
+4. Point your MCP client at `https://<your-ha>/api/mcp` with a long-lived
    access token.
+
+### If you already have MCP Server configured
+
+1. Set up **Exception Debug** first (above), so it is available to select.
+2. Go to **Settings → Devices & services → Model Context Protocol Server** and
+   **delete** the existing entry. Nothing else is lost — the entry stores only
+   which APIs to expose.
+3. Add the integration again, and this time tick **both** *Assist* and *Home
+   Assistant Exception Debugger*.
+
+   Selecting only *Home Assistant Exception Debugger* replaces Assist rather
+   than adding to it, and your agent loses the ability to control the house.
+4. Your existing MCP client configuration and token continue to work — the
+   endpoint is unchanged.
 
 Tools exposed to the agent:
 
