@@ -108,8 +108,8 @@ without it there is no MCP endpoint and the tools below are unreachable.
    that are registered *at the moment you run it*, so this one has to be loaded
    already or it will not appear as a choice.
 2. Add the **Model Context Protocol Server** integration.
-3. In the setup dialog, select **both** *Assist* and *Home Assistant Exception
-   Debugger*. The field accepts multiple values and defaults to *Assist* alone.
+3. In the setup dialog, the API field is a multi-select. Tick both *Assist* and
+   *Home Assistant Exception Debugger* (it defaults to *Assist* alone).
 4. Point your MCP client at `https://<your-ha>/api/mcp` with a long-lived
    access token.
 
@@ -119,11 +119,9 @@ without it there is no MCP endpoint and the tools below are unreachable.
 2. Go to **Settings → Devices & services → Model Context Protocol Server** and
    **delete** the existing entry. Nothing else is lost — the entry stores only
    which APIs to expose.
-3. Add the integration again, and this time tick **both** *Assist* and *Home
-   Assistant Exception Debugger*.
-
-   Selecting only *Home Assistant Exception Debugger* replaces Assist rather
-   than adding to it, and your agent loses the ability to control the house.
+3. Add the integration again. The API field is a multi-select, so tick both
+   *Assist* and *Home Assistant Exception Debugger* to keep your existing
+   Assist behaviour alongside the new tools.
 4. Your existing MCP client configuration and token continue to work — the
    endpoint is unchanged.
 
