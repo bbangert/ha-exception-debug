@@ -1,0 +1,4 @@
+clear:
+  name: Clear captured exceptions
+  description: >-
+    Remove all captured exceptions and release any retained traceback frames.
