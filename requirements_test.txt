@@ -6,5 +6,5 @@
 # the CI python-version must move in the same change.
 pytest-homeassistant-custom-component==0.13.316
 pytest-cov==7.0.0
-mypy==2.3.0
+mypy==2.3.1
 ruff==0.16.1
