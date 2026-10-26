@@ -5,6 +5,6 @@
 # Note when bumping: releases from 0.13.317 onward require Python >= 3.14, so
 # the CI python-version must move in the same change.
 pytest-homeassistant-custom-component==0.13.316
-pytest-cov==7.0.0
+pytest-cov==7.1.0
 mypy==2.3.0
 ruff==0.16.1
